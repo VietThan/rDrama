@@ -6,13 +6,13 @@ from sqlalchemy.orm import Session, declared_attr, deferred, relationship
 
 from files.classes.base import CreatedBase
 from files.classes.flags import Flag
-from files.classes.visstate import StateMod, StateReport
+from files.classes.visstate import StateMod, StateReport, VisibilityState
 from files.classes.votes import Vote
 from files.helpers.assetcache import assetcache_path
 from files.helpers.config.const import *
 from files.helpers.config.environment import (SCORE_HIDING_TIME_HOURS, SITE,
                                               SITE_FULL, SITE_ID)
-from files.helpers.content import ModerationState, body_displayed
+from files.helpers.content import body_displayed
 from files.helpers.lazy import lazy
 from files.helpers.time import format_age, format_datetime
 
@@ -32,7 +32,6 @@ class Submission(CreatedBase):
 	stickied_utc = Column(Integer)
 	is_pinned = Column(Boolean, default=False, nullable=False)
 	private = Column(Boolean, default=False, nullable=False)
-	club = Column(Boolean, default=False, nullable=False)
 	comment_count = Column(Integer, default=0, nullable=False)
 	over_18 = Column(Boolean, default=False, nullable=False)
 	is_bot = Column(Boolean, default=False, nullable=False)
@@ -141,7 +140,7 @@ class Submission(CreatedBase):
 
 	@lazy
 	def flags(self, v):
-		flags = g.db.query(Flag).filter_by(post_id=self.id).order_by(Flag.created_utc).all()
+		flags = g.db.query(Flag).filter_by(post_id=self.id).order_by(Flag.created_datetimez).all()
 		if not (v and (v.shadowbanned or v.admin_level >= 3)):
 			for flag in flags:
 				if flag.user.shadowbanned:
@@ -164,13 +163,12 @@ class Submission(CreatedBase):
 	@property
 	@lazy
 	def fullname(self):
-		return f"t2_{self.id}"	
+		return f"post_{self.id}"	
 
 	@property
 	@lazy
 	def shortlink(self):
 		link = f"/post/{self.id}"
-		if self.club: return link + '/-'
 
 		output = title_regex.sub('', self.title.lower())
 		output = output.split()[:6]
@@ -251,7 +249,6 @@ class Submission(CreatedBase):
 				'distinguish_level': self.distinguish_level,
 				'voted': self.voted if hasattr(self, 'voted') else 0,
 				'flags': flags,
-				'club': self.club,
 				}
 
 		return data
@@ -357,5 +354,5 @@ class Submission(CreatedBase):
 		return f"/edit_post/{self.id}"
 	
 	@property
-	def moderation_state(self) -> ModerationState:
-		return ModerationState.from_submittable(self)
+	def visibility_state(self) -> VisibilityState:
+		return VisibilityState.from_submittable(self)

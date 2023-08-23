@@ -23,8 +23,6 @@ def post_pid_comment_cid(cid, pid=None, anything=None, v=None):
 			g.db.add(notif)
 			g.db.commit()
 
-	if comment.post and comment.post.club and not (v and (v.paid_dues or v.id in [comment.author_id, comment.post.author_id])): abort(403)
-
 	if comment.post and comment.post.private and not (v and (v.admin_level >= 2 or v.id == comment.post.author.id)): abort(403)
 
 	if not comment.parent_submission and not (v and (comment.author.id == v.id or comment.sentto == v.id)) and not (v and v.admin_level >= 2) : abort(403)
@@ -111,16 +109,15 @@ def api_comment(v):
 	parent_fullname = request.values.get("parent_fullname", "").strip()
 
 	if len(parent_fullname) < 4: abort(400)
-	id = parent_fullname[3:]
 	parent = None
 	parent_post = None
 	parent_comment_id = None
 
-	if parent_fullname.startswith("t2_"):
-		parent = get_post(id, v=v)
+	if parent_fullname.startswith("post_"):
+		parent = get_post(parent_fullname.split("post_")[1], v=v)
 		parent_post = parent
-	elif parent_fullname.startswith("t3_"):
-		parent = get_comment(id, v=v)
+	elif parent_fullname.startswith("comment_"):
+		parent = get_comment(parent_fullname.split("comment_")[1], v=v)
 		parent_post = get_post(parent.parent_submission, v=v) if parent.parent_submission else None
 		parent_comment_id = parent.id
 	else: abort(400)
@@ -202,7 +199,11 @@ def api_comment(v):
 
 			abort(403, "Too much spam!")
 
-	is_filtered = v.should_comments_be_filtered()
+	is_filtered = v.should_comments_be_filtered
+
+	if (v.admin_level <= PERMS['POST_COMMENT_MODERATION'] 
+		and len(body) > COMMENT_BODY_LENGTH_MAXIMUM_UNFILTERED):
+		is_filtered = True
 
 	c = Comment(author_id=v.id,
 				parent_submission=parent_post.id,
@@ -242,6 +243,9 @@ def api_comment(v):
 	if replying_to_blocked:
 		message = "This user has blocked you. You are still welcome to reply " \
 				  "but you will be held to a higher standard of civility than you would be otherwise"
+	elif (v.admin_level <= PERMS['POST_COMMENT_MODERATION'] 
+			and len(body) > COMMENT_BODY_LENGTH_MAXIMUM_UNFILTERED):
+		message = "Your comment has been submitted but is a bit long, so it's pending approval."
 	else:
 		message = None
 	return {"comment": render_template("comments.html", v=v, comments=[c], ajax=True, parent_level=level), "message": message}

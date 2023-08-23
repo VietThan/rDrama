@@ -377,7 +377,7 @@ def leaderboard(v:User):
 	comments = SimpleLeaderboard(v, LeaderboardMeta("Comments", "comment count", "comments", "Comments", "comments"), g.db, users, User.comment_count)
 	received_awards = SimpleLeaderboard(v, LeaderboardMeta("Awards", "received awards", "awards", "Awards", None), g.db, users, User.received_award_count)
 	coins_spent = SimpleLeaderboard(v, LeaderboardMeta("Spent in shop", "coins spent in shop", "spent", "Coins", None), g.db, users, User.coins_spent)
-	truescore = SimpleLeaderboard(v, LeaderboardMeta("Truescore", "truescore", "truescore", "Truescore", None), g.db, users, User.truecoins)
+	truescore = SimpleLeaderboard(v, LeaderboardMeta("Truescore", "truescore", "truescore", "Truescore", None), g.db, users, User.truescore)
 	badges = BadgeMarseyLeaderboard(v, LeaderboardMeta("Badges", "badges", "badges", "Badges", None), g.db, Badge.user_id)
 	blocks = UserBlockLeaderboard(v, LeaderboardMeta("Blocked", "most blocked", "blocked", "Blocked By", "blockers"), g.db, UserBlock.target_id)
 
@@ -524,10 +524,6 @@ def messagereply(v):
 		if not notif:
 			notif = Notification(comment_id=c.id, user_id=user_id)
 			g.db.add(notif)
-			ids = [c.top_comment.id] + [x.id for x in c.top_comment.replies_ignoring_shadowbans]
-			notifications = g.db.query(Notification).filter(Notification.comment_id.in_(ids), Notification.user_id == user_id)
-			for n in notifications:
-				g.db.delete(n)
 
 		if PUSHER_ID != 'blahblahblah' and not v.shadowbanned:
 			if len(message) > 500: notifbody = message[:500] + '...'
@@ -540,7 +536,7 @@ def messagereply(v):
 						'notification': {
 							'title': f'New message from @{v.username}',
 							'body': notifbody,
-							'deep_link': f'{SITE_FULL}/notifications?messages=true',
+							'deep_link': f'{SITE_FULL}/notifications/messages',
 							'icon': SITE_FULL + assetcache_path(f'images/{SITE_ID}/icon.webp'),
 						}
 					},
@@ -550,7 +546,7 @@ def messagereply(v):
 							'body': notifbody,
 						},
 						'data': {
-							'url': '/notifications?messages=true',
+							'url': '/notifications/messages',
 						}
 					}
 				},
@@ -562,11 +558,6 @@ def messagereply(v):
 		for admin in admins:
 			notif = Notification(comment_id=c.id, user_id=admin.id)
 			g.db.add(notif)
-
-		ids = [c.top_comment.id] + [x.id for x in c.top_comment.replies_ignoring_shadowbans]
-		notifications = g.db.query(Notification).filter(Notification.comment_id.in_(ids))
-		for n in notifications:
-			g.db.delete(n)
 
 	g.db.commit()
 
@@ -619,7 +610,7 @@ def api_is_available(name):
 def user_id(id:int):
 	user = get_account(id)
 	return redirect(user.url)
-		
+
 @app.get("/u/<username>")
 def redditor_moment_redirect(username:str):
 	return redirect(f"/@{username}")
@@ -628,14 +619,14 @@ def redditor_moment_redirect(username:str):
 @auth_desired
 def followers(v, username):
 	u = get_user(username, v=v)
-	users = g.db.query(User).join(Follow, Follow.target_id == u.id).filter(Follow.user_id == User.id).order_by(Follow.created_utc).all()
+	users = g.db.query(User).join(Follow, Follow.target_id == u.id).filter(Follow.user_id == User.id).order_by(Follow.created_datetimez).all()
 	return render_template("followers.html", v=v, u=u, users=users)
 
 @app.get("/@<username>/following")
 @auth_desired
 def following(v, username):
 	u = get_user(username, v=v)
-	users = g.db.query(User).join(Follow, Follow.user_id == u.id).filter(Follow.target_id == User.id).order_by(Follow.created_utc).all()
+	users = g.db.query(User).join(Follow, Follow.user_id == u.id).filter(Follow.target_id == User.id).order_by(Follow.created_datetimez).all()
 	return render_template("following.html", v=v, u=u, users=users)
 
 @app.get("/views")
@@ -646,13 +637,12 @@ def visitors(v):
 	return render_template("viewers.html", v=v, viewers=viewers)
 
 
-@app.get("/@<username>")
+@app.get("/@<username>/posts")
 @auth_desired
 def u_username(username, v=None):
 	u = get_user(username, v=v, include_blocks=True)
 
-	if username != u.username:
-		return redirect(SITE_FULL + request.full_path.replace(username, u.username)[:-1])
+	if username != u.username: return redirect(f'/@{u.username}/posts')
 
 	if u.reserved:
 		if request.headers.get("Authorization") or request.headers.get("xhr"): abort(403, f"That username is reserved for: {u.reserved}")
@@ -698,7 +688,7 @@ def u_username(username, v=None):
 
 	if u.unban_utc:
 		if request.headers.get("Authorization"): {"data": [x.json for x in listing]}
-		return render_template("userpage.html",
+		return render_template("userpage_submissions.html",
 												unban=u.unban_string,
 												u=u,
 												v=v,
@@ -712,7 +702,7 @@ def u_username(username, v=None):
 
 
 	if request.headers.get("Authorization"): return {"data": [x.json for x in listing]}
-	return render_template("userpage.html",
+	return render_template("userpage_submissions.html",
 									u=u,
 									v=v,
 									listing=listing,
@@ -723,12 +713,13 @@ def u_username(username, v=None):
 									is_following=(v and u.has_follower(v)))
 
 
-@app.get("/@<username>/comments")
+@app.get("/@<username>/")
 @auth_desired
 def u_username_comments(username, v=None):
 	user = get_user(username, v=v, include_blocks=True)
 
-	if username != user.username: return redirect(f'/@{user.username}/comments')
+	if username != user.username:
+		return redirect(SITE_FULL + request.full_path.replace(username, user.username)[:-1])
 	u = user
 
 	if u.reserved:
@@ -802,6 +793,7 @@ def u_user_id_info(id, v=None):
 		abort(403, "This user is blocking you.")
 
 	return user.json
+
 
 @app.post("/follow/<username>")
 @limiter.limit("1/second;30/minute;200/hour;1000/day")
@@ -935,13 +927,14 @@ def saved_posts(v, username):
 	listing = get_posts(ids, v=v, eager=True)
 
 	if request.headers.get("Authorization"): return {"data": [x.json for x in listing]}
-	return render_template("userpage.html",
-											u=v,
-											v=v,
-											listing=listing,
-											page=page,
-											next_exists=next_exists,
-											)
+	return render_template(
+		"userpage_submissions.html",
+		u=v,
+		v=v,
+		listing=listing,
+		page=page,
+		next_exists=next_exists,
+	)
 
 
 @app.get("/@<username>/saved/comments")
@@ -959,13 +952,15 @@ def saved_comments(v, username):
 
 
 	if request.headers.get("Authorization"): return {"data": [x.json for x in listing]}
-	return render_template("userpage_comments.html",
-											u=v,
-											v=v,
-											listing=listing,
-											page=page,
-											next_exists=next_exists,
-											standalone=True)
+	return render_template(
+		"userpage_comments.html",
+		u=v,
+		v=v,
+		listing=listing,
+		page=page,
+		next_exists=next_exists,
+		standalone=True
+	)
 
 
 @app.post("/fp/<fp>")

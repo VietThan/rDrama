@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from typing import TYPE_CHECKING, Union
 
 import pyotp
@@ -21,9 +22,7 @@ from files.classes.userblock import UserBlock
 from files.classes.visstate import StateMod
 from files.helpers.assetcache import assetcache_path
 from files.helpers.config.const import *
-from files.helpers.config.environment import (CARD_VIEW,
-                                              CLUB_TRUESCORE_MINIMUM,
-                                              DEFAULT_COLOR,
+from files.helpers.config.environment import (CARD_VIEW, DEFAULT_COLOR,
                                               DEFAULT_TIME_FILTER, SITE_FULL,
                                               SITE_ID)
 from files.helpers.security import *
@@ -94,11 +93,10 @@ class User(CreatedBase):
 	is_banned = Column(Integer, default=0, nullable=False)
 	unban_utc = Column(Integer, default=0, nullable=False)
 	ban_reason = deferred(Column(String))
-	club_allowed = Column(Boolean)
 	login_nonce = Column(Integer, default=0, nullable=False)
 	reserved = deferred(Column(String))
 	coins = Column(Integer, default=0, nullable=False)
-	truecoins = Column(Integer, default=0, nullable=False)
+	truescore = Column(Integer, default=0, nullable=False)
 	procoins = Column(Integer, default=0, nullable=False)
 	mfa_secret = deferred(Column(String))
 	is_private = Column(Boolean, default=False, nullable=False)
@@ -158,18 +156,43 @@ class User(CreatedBase):
 
 	def can_manage_reports(self):
 		return self.admin_level > 1
+	
+	@property
+	def age_days(self):
+		return (datetime.now() - datetime.fromtimestamp(self.created_utc)).days
 
+	@property
 	def should_comments_be_filtered(self):
 		from files.__main__ import app  # avoiding import loop
 		if self.admin_level > 0:
 			return False
 		# TODO: move settings out of app.config
 		site_settings = app.config['SETTINGS']
-		minComments = site_settings.get('FilterCommentsMinComments', 0)
-		minKarma = site_settings.get('FilterCommentsMinKarma', 0)
-		minAge = site_settings.get('FilterCommentsMinAgeDays', 0)
-		accountAgeDays = self.age_timedelta.days
-		return self.comment_count < minComments or accountAgeDays < minAge or self.truecoins < minKarma
+		min_comments = site_settings.get('FilterCommentsMinComments', 0)
+		min_karma = site_settings.get('FilterCommentsMinKarma', 0)
+		min_age = site_settings.get('FilterCommentsMinAgeDays', 0)
+		return self.comment_count < min_comments \
+			or self.age_days < min_age \
+			or self.truescore < min_karma
+
+
+	def can_change_user_privacy(self, v: "User") -> bool:
+		from files.__main__ import app  # avoiding import loop
+		if v.admin_level >= PERMS['USER_SET_PROFILE_PRIVACY']: return True
+		if self.id != v.id: return False # non-admin changing someone else's things, hmm...
+
+		# TODO: move settings out of app.config
+		site_settings = app.config['SETTINGS']
+		min_comments: int = site_settings.get('min_comments_private_profile', 0)
+		min_truescore: int = site_settings.get('min_truescore_private_profile', 0)
+		min_age_days: int = site_settings.get('min_age_days_private_profile', 0)
+		user_age_days: int = self.age_timedelta.days
+
+		return (
+			self.comment_count >= min_comments
+			and self.truescore >= min_truescore
+			and user_age_days  >= min_age_days)
+	
 
 	@property
 	@lazy
@@ -191,11 +214,6 @@ class User(CreatedBase):
 
 	def is_blocking(self, target):
 		return g.db.query(UserBlock).filter_by(user_id=self.id, target_id=target.id).one_or_none()
-
-	@property
-	@lazy
-	def paid_dues(self):
-		return not self.shadowbanned and not (self.is_banned and not self.unban_utc) and (self.admin_level or self.club_allowed or (self.club_allowed != False and self.truecoins > CLUB_TRUESCORE_MINIMUM))
 
 	@lazy
 	def any_block_exists(self, other):
@@ -243,7 +261,7 @@ class User(CreatedBase):
 	@property
 	@lazy
 	def fullname(self):
-		return f"t1_{self.id}"
+		return f"user_{self.id}"
 
 	@property
 	@lazy
@@ -350,23 +368,13 @@ class User(CreatedBase):
 
 	@property
 	@lazy
-	def reddit_notifications_count(self):
-		return g.db.query(Notification.user_id).join(Comment).filter(Notification.user_id == self.id, Notification.read == False, Comment.state_mod == StateMod.VISIBLE, Comment.state_user_deleted_utc == None, Comment.body_html.like('%<p>New site mention: <a href="https://old.reddit.com/r/%'), Comment.parent_submission == None, Comment.author_id == NOTIFICATIONS_ID).count()
-
-	@property
-	@lazy
 	def normal_count(self):
-		return self.notifications_count - self.post_notifications_count - self.reddit_notifications_count
+		return self.notifications_count - self.post_notifications_count
 
 	@property
 	@lazy
 	def do_posts(self):
-		return self.post_notifications_count and self.notifications_count-self.reddit_notifications_count == self.post_notifications_count
-
-	@property
-	@lazy
-	def do_reddit(self):
-		return self.notifications_count == self.reddit_notifications_count
+		return self.post_notifications_count and self.notifications_count == self.post_notifications_count
 
 	@property
 	@lazy

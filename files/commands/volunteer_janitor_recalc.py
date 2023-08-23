@@ -24,7 +24,7 @@ CONFIG_default_user_accuracy = 0.2
 CONFIG_user_correctness_lerp = 0.2
 
 def _compile_records(db):
-    vrecords = db.query(VolunteerJanitorRecord).order_by(VolunteerJanitorRecord.recorded_utc).all()
+    vrecords = db.query(VolunteerJanitorRecord).order_by(VolunteerJanitorRecord.recorded_datetimez).all()
 
     # get the info we need for all mentioned posts
     reported_comment_ids = {record.comment_id for record in vrecords}
@@ -169,7 +169,7 @@ def volunteer_janitor_recalc(db: Session, diagnostics: bool = False):
 
     usernotes_raw = db.query(UserNote) \
         .where(UserNote.tag.in_([UserTag.Warning, UserTag.Tempban, UserTag.Permban, UserTag.Spam, UserTag.Bot])) \
-        .options(sqlalchemy.orm.load_only('reference_user', 'created_utc', 'tag'))
+        .options(sqlalchemy.orm.load_only('reference_user', 'created_datetimez', 'tag'))
 
     # Here we're trying to figure out whether modhats are actually warnings/bans
     # We don't have a formal connection between "a comment is bad" and "the user got a warning", so we're kind of awkwardly trying to derive it from our database

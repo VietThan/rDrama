@@ -4,12 +4,12 @@ from copy import deepcopy
 from sqlalchemy import *
 from sqlalchemy.orm import relationship
 
-from files.classes.base import CreatedBase
+from files.classes.base import CreatedDateTimeBase
 from files.helpers.config.const import *
 from files.helpers.lazy import lazy
 
 
-class ModAction(CreatedBase):
+class ModAction(CreatedDateTimeBase):
 	__tablename__ = "modactions"
 	id = Column(Integer, primary_key=True)
 	user_id = Column(Integer, ForeignKey("users.id"))
@@ -55,7 +55,7 @@ class ModAction(CreatedBase):
 	@property
 	@lazy
 	def string(self):
-		output = self.lookup_action_type()["str"].format(self=self, cc=CC_TITLE)
+		output = self.lookup_action_type()["str"].format(self=self)
 		if not self.note: return output
 		output += f" <i>({self.note})</i>"
 		return output
@@ -65,7 +65,6 @@ class ModAction(CreatedBase):
 	def target_link(self):
 		if self.target_user: return f'<a href="{self.target_user.url}">{self.target_user.username}</a>'
 		elif self.target_post:
-			if self.target_post.club: return f'<a href="{self.target_post.permalink}">{CC} ONLY</a>'
 			return f'<a href="{self.target_post.permalink}">{self.target_post.title_html}</a>'
 		elif self.target_comment_id: return f'<a href="/comment/{self.target_comment_id}?context=8#context">comment</a>'
 
@@ -85,6 +84,26 @@ class ModAction(CreatedBase):
 		return f"/log/{self.id}"	
 
 ACTIONTYPES = {
+	'approve_post': {
+		"str": 'approved post {self.target_link}', 
+		"icon": 'fa-feather-alt', 
+		"color": 'bg-success'
+	},
+	'approve_comment': {
+		"str": 'approved {self.target_link}', 
+		"icon": 'fa-comment', 
+		"color": 'bg-success'
+	},
+	'remove_post': {
+		"str": 'removed post {self.target_link}', 
+		"icon": 'fa-feather-alt', 
+		"color": 'bg-danger'
+	},
+	'remove_comment': {
+		"str": 'removed {self.target_link}', 
+		"icon": 'fa-comment', 
+		"color": 'bg-danger'
+	},
 	'approve_app': {
 		"str": 'approved an application by {self.target_link}', 
 		"icon": 'fa-robot', 
@@ -100,19 +119,9 @@ ACTIONTYPES = {
 		"icon": 'fa-badge', 
 		"color": 'bg-danger'
 	},
-	'remove_comment': {
-		"str": 'removed {self.target_link}', 
-		"icon": 'fa-comment', 
-		"color": 'bg-danger'
-	},
 	'ban_domain': {
 		"str": 'banned a domain', 
 		"icon": 'fa-globe', 
-		"color": 'bg-danger'
-	},
-	'remove_post': {
-		"str": 'removed post {self.target_link}', 
-		"icon": 'fa-feather-alt', 
 		"color": 'bg-danger'
 	},
 	'ban_user': {
@@ -129,16 +138,6 @@ ACTIONTYPES = {
 		"str": 'gave {self.target_link} a checkmark', 
 		"icon": 'fa-badge-check', 
 		"color": 'bg-success'
-	},
-	'club_allow': {
-		"str": 'allowed user {self.target_link} into the {cc}', 
-		"icon": 'fa-golf-club', 
-		"color": 'bg-success'
-	},
-	'club_ban': {
-		"str": 'disallowed user {self.target_link} from the {cc}', 
-		"icon": 'fa-golf-club', 
-		"color": 'bg-danger'
 	},
 	'delete_report': {
 		"str": 'deleted report on {self.target_link}', 
@@ -300,19 +299,9 @@ ACTIONTYPES = {
 		"icon": 'fa-eye-slash', 
 		"color": 'bg-danger'
 	},
-	'unremove_comment': {
-		"str": 'reinstated {self.target_link}', 
-		"icon": 'fa-comment', 
-		"color": 'bg-success'
-	},
 	'unban_domain': {
 		"str": 'unbanned a domain', 
 		"icon": 'fa-globe', 
-		"color": 'bg-success'
-	},
-	'unremove_post': {
-		"str": 'reinstated post {self.target_link}', 
-		"icon": 'fa-feather-alt', 
 		"color": 'bg-success'
 	},
 	'unban_user': {

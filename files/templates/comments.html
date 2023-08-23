@@ -10,9 +10,8 @@
 	{%- set score = c.score_str(render_ctx) -%}
 	{%- set downs = c.downvotes_str(render_ctx) -%}
 	{% set replies = c.replies(v) %}
-	{%- set is_notification_page = request.path.startswith('/notifications') -%}
 
-{% if not c.visibility_state(v)[0] %}
+{% if not c.visibility_and_message(v)[0] %}
 {% if c.show_descendants(v) %}
 <div id="comment-{{c.id}}" class="comment">
 		<div class="comment-collapse-icon" onclick="collapse_comment('{{c.id}}', this.parentElement)"></div>
@@ -22,35 +21,26 @@
 
 		<div class="comment-user-info">
 			{% if standalone and c.over_18 %}<span class="badge badge-danger">+18</span>{% endif %}
-			{{c.visibility_state(v)[1]}}
+			{{c.visibility_and_message(v)[1]}}
 		</div>
 		
 		<div class="comment-body">
 				<div id="comment-{{c.id}}-only" class="comment-{{c.id}}-only"></div>
-	{% if render_replies %} 
-		{% if level <= RENDER_DEPTH_LIMIT - 1 %}
-			<div id="replies-of-{{c.id}}" class="">
-				{% set standalone=False %}
+	{% if render_replies %}
+		<div id="replies-of-{{c.id}}" class="{% if replies and is_notification_page %}d-none d-md-block{% endif %}">
+			{% if level <= RENDER_DEPTH_LIMIT - 1 %}
+				{% set standalone=false %}
 				{% for reply in replies %}
 					{{single_comment(reply, level=level+1)}}
 				{% endfor %}
+			{% endif %}
+		</div>
+		{% if replies and level >= RENDER_DEPTH_LIMIT -%}
+			<div id="morecomment-{{c.id}}" class="{% if is_notification_page %}d-md-none {% endif %}mt-2 more-comments">
+				{% if not is_notification_page %}<button id="btn-{{c.id}}" class="d-none d-md-block btn btn-primary" onclick="morecomments('{{c.id}}')">More comments ({{c.descendant_count}})</button>{% endif %}
+				<a {% if not is_notification_page %}class="d-md-none" {% endif %}href="{{c.morecomments}}">More comments <i class="fas fa-long-arrow-right ml-1"></i></a>
 			</div>
-		{% elif replies and is_notification_page %}
-			<div id="replies-of-{{c.id}}" class="d-none d-md-block">
-				{% set standalone=False %}
-				{% for reply in replies %}
-					{{single_comment(reply, level=level+1)}}
-				{% endfor %}
-			</div>
-			<div id="morecomment-{{c.id}}" class="d-md-none mt-2 more-comments">
-				<a href="{{c.morecomments}}">More comments <i class="fas fa-long-arrow-right ml-1"></i></a>
-			</div>
-		{% elif replies %}
-			<div id="morecomment-{{c.id}}" class="mt-2 more-comments">
-				<button id="btn-{{c.id}}" class="d-none d-md-block btn btn-primary" onclick="morecomments('{{c.id}}')">More comments ({{c.descendant_count}})</button>
-				<a class="d-md-none" href="{{c.morecomments}}">More comments <i class="fas fa-long-arrow-right ml-1"></i></a>
-			</div>
-		{% endif %}
+		{%- endif %}
 	{% endif %}
 		</div>
 </div>
@@ -61,10 +51,10 @@
 {%- set voted = c.voted_display(v) -%}
 
 {% if standalone and level==1 %}
-<div class="post-info post-row-cid-{{c.id}} mb-1 mr-2 {% if is_notification_page %}mt-5{% else %}mt-3{% endif %}">
+<div class="post-info post-row-cid-{{c.id}} mb-1 mr-2 mt-3">
 	{% if c.post and c.post.over_18 %}<span class="badge badge-danger text-small-extra mr-1">+18</span>{% endif %}
 	<span class="align-top">
-		<span class="font-weight-bold">{{c.header_msg(v, is_notification_page, replies | length) | safe}}</span>
+		<span class="font-weight-bold">{{c.header_msg(v, is_notification_page) | safe}}</span>
 	</span>
 </div>
 {% endif %}
@@ -83,7 +73,7 @@
 	<div class="comment-body">
 		<div id="{% if comment_info and comment_info.id == c.id %}context{%else%}comment-{{c.id}}-only{% endif %}" class="{% if c.unread %}unread{% endif %} comment-{{c.id}}-only comment-anchor {% if comment_info and comment_info.id == c.id %}context{%endif%}{% if c.state_mod == StateMod.REMOVED %} removed{% endif %}{% if c.state_mod == StateMod.FILTERED %} filtered{% endif %}{% if c.state_user_deleted_utc %} deleted{% endif %}">
 			{%- include 'component/comment/reports.html'-%}
-			{% if c.state_mod == StateMod.REMOVED and c.state_mod_set_by and v and v.admin_level >= 2 %}
+			{% if c.state_mod == StateMod.REMOVED and c.state_mod_set_by and v and v.admin_level >= PERMS['POST_COMMENT_MODERATION'] %}
 				<div id="comment-banned-warning" class="comment-text text-removed mb-0">removed by @{{c.state_mod_set_by}}</div>
 			{% endif %}
 
@@ -129,6 +119,10 @@
 
 		{%- include 'component/comment/replybox_comment.html' -%}
 
+		{% if is_notification_page and c.is_strict_message and c.author_id not in (NOTIFICATIONS_ID, AUTOJANNY_ID) %}
+			{%- include 'component/comment/replybox_message.html' -%}
+		{% endif %}
+		
 		{% if render_replies %} 
 			{% if level <= RENDER_DEPTH_LIMIT - 1 or is_notification_page %}
 				<div id="replies-of-{{c.id}}">
@@ -141,10 +135,6 @@
 					<button id="btn-{{c.id}}" class="d-none d-md-block btn btn-primary" onclick="morecomments('{{c.id}}')">More comments ({{c.descendant_count}})</button>
 					<a class="d-md-none" href="{{c.morecomments}}">More comments <i class="fas fa-long-arrow-right ml-1"></i></a>
 				</div>
-			{% endif %}
-
-			{% if is_notification_page and c.level == 1 and c.is_strict_message and c.author_id not in (NOTIFICATIONS_ID, AUTOJANNY_ID) %}
-				{%- include 'component/comment/replybox_message.html' -%}
 			{% endif %}
 		{% else %}
 			<div id="replies-of-{{c.id}}"></div>
@@ -190,7 +180,7 @@
 
 	{% if v %}
 		{% if v.admin_level >= 2 %}
-			<script src="{{ 'js/comments_admin.js' | asset }}"></script>
+			<script src="{{ 'js/comments+submission_admin.js' | asset }}"></script>
 		{% endif %}
 		{% if v.admin_level >= 2 %}
 			<script src="{{ 'js/filter_actions.js' | asset }}"></script>
@@ -202,23 +192,23 @@
 	<script src="{{ 'js/comments+submission_listing.js' | asset }}"></script>
 	<script src="{{ 'js/comments.js' | asset }}"></script>
 
+	{# See https://github.com/themotte/rDrama/pull/642#issuecomment-1646649781 for info on this section of the code #}
 	<script>
 		{% if p and (not v or v.highlightcomments) %}
 			comments = JSON.parse(localStorage.getItem("comment-counts")) || {}
 			lastCount = comments['{{p.id}}']
-			if (lastCount)
-			{
-				{% for c in p.comments %}
-					{% if not (v and v.id==c.author_id) and not c.voted %}
-						if ({{c.created_utc*1000}} > lastCount.t) 
-						try {
-							document.getElementById("comment-{{c.id}}-only").classList.add('unread')
-							document.getElementById("comment-{{c.id}}").querySelector(".comment-user-info").innerHTML += "<span>~new~</span>";
-						}
-						catch(e) {}
-					{% endif %}
+			var commentsToCheck = [
+				{% for c in p.comments -%}
+					{%- if not (v and v.id==c.author_id) and not c.voted %}
+					[{{c.id}}, {{c.created_utc * 1000}}],
+					{%- endif -%}
 				{% endfor %}
-			}
+			];
+
+			commentsToCheck = commentsToCheck.filter(comment => comment[1] > lastCount.t)
+			                                 .map(comment => comment[0]);
+
+			if (lastCount) commentsAddUnreadIndicator(commentsToCheck);
 		{% endif %}
 
 		{% if p and not (request.values and ('context' in request.values)) %}
@@ -251,20 +241,21 @@
 					{% if p %}
 						comments = JSON.parse(localStorage.getItem("old-comment-counts")) || {}
 						lastCount = comments['{{p.id}}']
-						if (lastCount)
-						{
-							{% for c in p.comments %}
-								{% if not (v and v.id==c.author_id) and not c.voted %}
-									if ({{c.created_utc*1000}} > lastCount.t) 
-									try {
-										document.getElementById("comment-{{c.id}}-only").classList.add('unread')
-										document.getElementById("comment-{{c.id}}").querySelector(".comment-user-info").innerHTML += "<span>~new~</span>";
-									}
-									catch(e) {}
-								{% endif %}
+
+						var commentsToCheck = [
+							{% for c in p.comments -%}
+								{%- if not (v and v.id==c.author_id) and not c.voted %}
+								[{{c.id}}, {{c.created_utc * 1000}}],
+								{%- endif -%}
 							{% endfor %}
-						}
+						];
+
+						commentsToCheck = commentsToCheck.filter(comment => comment[1] > lastCount.t)
+						                                 .map(comment => comment[0]);
+						
+						if (lastCount) commentsAddUnreadIndicator(commentsToCheck);
 					{% endif %}
+					MicroModal.init();
 				}
 				btn.disabled = false;
 			}

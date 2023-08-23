@@ -55,7 +55,7 @@ def support(v):
 def participation_stats(v):
 	day = int(time.time()) - 86400
 
-	week = int(time.time()) - 604800
+	week = int(time.time()) - 604800 # TODO themotte#601 use created_datetimez once all is converted
 	posters = g.db.query(Submission.author_id).distinct(Submission.author_id).filter(Submission.created_utc > week).all()
 	commenters = g.db.query(Comment.author_id).distinct(Comment.author_id).filter(Comment.created_utc > week).all()
 	voters = g.db.query(Vote.user_id).distinct(Vote.user_id).filter(Vote.created_utc > week).all()
@@ -78,13 +78,13 @@ def participation_stats(v):
 		"signups last 24h": users.filter(User.created_utc > day).count(),
 		"total posts": submissions.count(),
 		"posting users": g.db.query(Submission.author_id).distinct().count(),
-		"listed posts": submissions.filter_by(Submission.state_mod == StateMod.VISIBLE).filter(Submission.state_user_deleted_utc == None).count(),
-		"removed posts (by admins)": submissions.filter_by(Submission.state_mod != StateMod.VISIBLE).count(),
+		"listed posts": submissions.filter(Submission.state_mod == StateMod.VISIBLE).filter(Submission.state_user_deleted_utc == None).count(),
+		"removed posts (by admins)": submissions.filter(Submission.state_mod != StateMod.VISIBLE).count(),
 		"deleted posts (by author)": submissions.filter(Submission.state_user_deleted_utc != None).count(),
 		"posts last 24h": submissions.filter(Submission.created_utc > day).count(),
 		"total comments": comments.filter(Comment.author_id.notin_((AUTOJANNY_ID,NOTIFICATIONS_ID))).count(),
 		"commenting users": g.db.query(Comment.author_id).distinct().count(),
-		"removed comments (by admins)": comments.filter_by(Comment.state_mod != StateMod.VISIBLE).count(),
+		"removed comments (by admins)": comments.filter(Comment.state_mod != StateMod.VISIBLE).count(),
 		"deleted comments (by author)": comments.filter(Comment.state_user_deleted_utc != None).count(),
 		"comments last_24h": comments.filter(Comment.created_utc > day, Comment.author_id.notin_((AUTOJANNY_ID,NOTIFICATIONS_ID))).count(),
 		"post votes": g.db.query(Vote.submission_id).count(),
@@ -199,9 +199,9 @@ def patrons(v):
 @auth_desired
 def admins(v):
 	if v and v.admin_level >= 3:
-		admins = g.db.query(User).filter(User.admin_level>1).order_by(User.truecoins.desc()).all()
-		admins += g.db.query(User).filter(User.admin_level==1).order_by(User.truecoins.desc()).all()
-	else: admins = g.db.query(User).filter(User.admin_level>0).order_by(User.truecoins.desc()).all()
+		admins = g.db.query(User).filter(User.admin_level>1).order_by(User.truescore.desc()).all()
+		admins += g.db.query(User).filter(User.admin_level==1).order_by(User.truescore.desc()).all()
+	else: admins = g.db.query(User).filter(User.admin_level>0).order_by(User.truescore.desc()).all()
 	return render_template("admins.html", v=v, admins=admins)
 
 
