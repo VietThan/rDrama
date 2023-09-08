@@ -3,6 +3,8 @@
 
 This code runs https://www.themotte.org .
 
+Join [the Dev Discord](https://discord.gg/KChpcdaNJC) for help.
+
 # Installation (Windows/Linux/MacOS)
 
 1 - Install [a container runtime and the Docker commandline tools](https://docs.docker.com/get-docker/) on your machine.
@@ -33,7 +35,9 @@ The first time you do this, it will take a while. It'll be (much) faster next ti
 
 6 - That's it!
 
-Code edits will be reflected (almost) immediately. If you make any setup changes or database changes, you'll need to ctrl-C the docker-compose status log and run `docker-compose up --build` again.
+Most code edits will be reflected (almost) immediately. If you make any setup changes or database changes, you'll need to ctrl-C the docker-compose status log and run `docker-compose up --build` again.
+
+Chat-related code edits will take a minute to update (if it's in Python) or won't be reflected automatically at all (if it's in React). Improvements welcome! But almost nobody touches these systems, so it hasn't been a priority.
 
 # Run the E2E tests:
 

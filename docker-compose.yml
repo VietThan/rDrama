@@ -12,11 +12,12 @@ services:
       - DATABASE_URL=postgresql://postgres@postgres:5432
       - REDIS_URL=redis://redis
       - ENFORCE_PRODUCTION=False
+
+      # Debug option to relax many of the volunteer limits.
+      #- DBG_VOLUNTEER_PERMISSIVE=True
     links:
       - "redis"
       - "postgres"
-    ports:
-      - "80:80"
     depends_on:
       - redis
       - postgres
@@ -33,7 +34,19 @@ services:
     volumes:
       - "./bootstrap/original-schema.sql:/docker-entrypoint-initdb.d/00-schema.sql"
       - "./bootstrap/original-seed-db.sql:/docker-entrypoint-initdb.d/10-seed-db.sql"
+      # uncomment this if you want to explicitly set a DB
+      #- "./postgres_db:/var/lib/postgresql/data"
     environment:
       - POSTGRES_HOST_AUTH_METHOD=trust
     ports:
       - "5432:5432"
+
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80"
+    volumes:
+      - ./bootstrap/nginx_dev.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - site
+    
